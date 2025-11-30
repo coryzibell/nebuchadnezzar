@@ -9,8 +9,7 @@ on:
         description: 'GitHub PAT for tagging'
         required: true
 
-permissions:
-  contents: write
+# Note: Caller must grant 'contents: write' for bump/tag jobs to work
 
 jobs:
   # Skip draft PRs and template repos
@@ -61,6 +60,8 @@ jobs:
     needs: [gate, matrix]
     if: needs.gate.outputs.is_main == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       new_version: ${{ steps.bump.outputs.new_version }}
       bumped: ${{ steps.bump.outputs.bumped }}
@@ -131,6 +132,8 @@ jobs:
     needs: bump
     if: needs.bump.outputs.bumped == 'true' || needs.bump.outputs.new_version != ''
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
