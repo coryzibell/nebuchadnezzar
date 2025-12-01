@@ -91,20 +91,8 @@ jobs:
         id: asset
         shell: bash
         run: |
-          TARGET="${{ matrix.target }}"
-          case "$TARGET" in
-            x86_64-unknown-linux-gnu)     ASSET="${BINARY_NAME}-linux-x86_64" ;;
-            aarch64-unknown-linux-gnu)    ASSET="${BINARY_NAME}-linux-aarch64" ;;
-            x86_64-unknown-linux-musl)    ASSET="${BINARY_NAME}-linux-x86_64-musl" ;;
-            aarch64-unknown-linux-musl)   ASSET="${BINARY_NAME}-linux-aarch64-musl" ;;
-            x86_64-unknown-freebsd)       ASSET="${BINARY_NAME}-freebsd-x86_64" ;;
-            x86_64-pc-windows-msvc)       ASSET="${BINARY_NAME}-windows-x86_64" ;;
-            aarch64-pc-windows-msvc)      ASSET="${BINARY_NAME}-windows-aarch64" ;;
-            x86_64-apple-darwin)          ASSET="${BINARY_NAME}-macos-x86_64" ;;
-            aarch64-apple-darwin)         ASSET="${BINARY_NAME}-macos-aarch64" ;;
-            *)                            ASSET="${BINARY_NAME}-${TARGET}" ;;
-          esac
-          echo "asset_name=$ASSET" >> $GITHUB_OUTPUT
+          # Use full target triple for cargo-binstall compatibility
+          echo "asset_name=${BINARY_NAME}-${{ matrix.target }}" >> $GITHUB_OUTPUT
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
@@ -145,6 +133,57 @@ jobs:
         with:
           path: artifacts
 
+      - name: Generate release notes
+        env:
+          BINARY_NAME: ${{ needs.get-name.outputs.name }}
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          REPO="${GITHUB_REPOSITORY}"
+
+          cat > RELEASE_NOTES.md << 'EOF'
+          ## Install
+
+          ### From crates.io
+
+          ```bash
+          cargo install $BINARY_NAME
+          ```
+
+          ### Prebuilt Binaries
+
+          | Platform | Architecture | Download |
+          |----------|--------------|----------|
+          EOF
+
+          # Strip leading whitespace from heredoc
+          sed -i 's/^          //' RELEASE_NOTES.md
+
+          # Replace $BINARY_NAME placeholder
+          sed -i "s/\$BINARY_NAME/$BINARY_NAME/g" RELEASE_NOTES.md
+
+          # Generate table rows from artifacts (target triple naming)
+          for file in artifacts/*/*.tar.gz artifacts/*/*.zip; do
+            [ -f "$file" ] || continue
+            FILENAME=$(basename "$file")
+            URL="https://github.com/${REPO}/releases/download/${VERSION}/${FILENAME}"
+
+            # Parse platform and arch from target triple (e.g., mx-x86_64-unknown-linux-gnu.tar.gz)
+            case "$FILENAME" in
+              *-x86_64-unknown-linux-gnu.*)    PLATFORM="Linux (glibc)"; ARCH="x86_64" ;;
+              *-aarch64-unknown-linux-gnu.*)   PLATFORM="Linux (glibc)"; ARCH="aarch64" ;;
+              *-x86_64-unknown-linux-musl.*)   PLATFORM="Linux (musl)"; ARCH="x86_64" ;;
+              *-aarch64-unknown-linux-musl.*)  PLATFORM="Linux (musl)"; ARCH="aarch64" ;;
+              *-x86_64-unknown-freebsd.*)      PLATFORM="FreeBSD"; ARCH="x86_64" ;;
+              *-x86_64-pc-windows-msvc.*)      PLATFORM="Windows"; ARCH="x86_64" ;;
+              *-aarch64-pc-windows-msvc.*)     PLATFORM="Windows"; ARCH="aarch64" ;;
+              *-x86_64-apple-darwin.*)         PLATFORM="macOS"; ARCH="x86_64 (Intel)" ;;
+              *-aarch64-apple-darwin.*)        PLATFORM="macOS"; ARCH="aarch64 (Apple Silicon)" ;;
+              *) PLATFORM="Other"; ARCH="unknown" ;;
+            esac
+
+            echo "| $PLATFORM | $ARCH | [$FILENAME]($URL) |" >> RELEASE_NOTES.md
+          done
+
       - name: Create Release
         env:
           # Use GH_PAT so release event triggers knock-knock workflow
@@ -159,7 +198,7 @@ jobs:
 
           gh release create "$VERSION" \
             --title "Release $VERSION" \
-            --generate-notes
+            --notes-file RELEASE_NOTES.md
 
           for file in artifacts/*/*.tar.gz artifacts/*/*.zip; do
             [ -f "$file" ] && gh release upload "$VERSION" "$file"
