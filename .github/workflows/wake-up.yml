@@ -97,11 +97,9 @@ jobs:
           echo "bumped=true" >> $GITHUB_OUTPUT
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Install base-d and mx
+      - name: Install mx
         if: steps.bump.outputs.bumped == 'true'
-        run: |
-          cargo install base-d
-          cargo install mx
+        run: cargo install mx
 
       - name: Commit version bump
         if: steps.bump.outputs.bumped == 'true'
@@ -114,10 +112,11 @@ jobs:
           MESSAGE="Bump version to ${{ steps.bump.outputs.new_version }}"
 
           # Encode with mx (random algos + dictionaries)
+          # Output format: line 1 = title, line 3 = body, line 5 = footer
           ENCODED=$(mx encode-commit --title "$VERSION" --body "$MESSAGE")
           TITLE=$(echo "$ENCODED" | sed -n '1p')
-          BODY=$(echo "$ENCODED" | sed -n '2p')
-          FOOTER=$(echo "$ENCODED" | sed -n '3p')
+          BODY=$(echo "$ENCODED" | sed -n '3p')
+          FOOTER=$(echo "$ENCODED" | sed -n '5p')
 
           git commit -m "$TITLE
 
