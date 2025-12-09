@@ -67,7 +67,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.GH_PAT }}
 
       - name: Fetch and sync configs
         id: sync
@@ -108,10 +108,12 @@ jobs:
 
       - name: Commit config sync
         if: steps.sync.outputs.synced == 'true'
+        env:
+          CONFIG_FILES: ".gitattributes"
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add $CONFIG_FILES
           git commit -m "Sync configs from nebuchadnezzar"
           git push origin main
 
