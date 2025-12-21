@@ -1,0 +1,95 @@
+# there is no spoon.
+# wasm builds - compiling to the web, where binaries dissolve into bytes.
+name: there is no spoon.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Git ref to checkout'
+        required: false
+        type: string
+        default: ''
+      working-directory:
+        description: 'Working directory for monorepos'
+        required: false
+        type: string
+        default: '.'
+      features:
+        description: 'Feature flags to enable (comma-separated)'
+        required: false
+        type: string
+        default: ''
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  wasm-build:
+    name: WASM Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-wasm-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-wasm-
+
+      - name: Build with wasm-pack
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -n "${{ inputs.features }}" ]; then
+            wasm-pack build --target web --features "${{ inputs.features }}"
+          else
+            wasm-pack build --target web
+          fi
+
+      - name: Test (if wasm-pack test supported)
+        working-directory: ${{ inputs.working-directory }}
+        continue-on-error: true
+        run: wasm-pack test --headless --firefox
+
+  wasm-check:
+    name: WASM Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-wasm-check-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-wasm-check-
+
+      - name: Check WASM target
+        working-directory: ${{ inputs.working-directory }}
+        run: |
+          if [ -n "${{ inputs.features }}" ]; then
+            cargo check --target wasm32-unknown-unknown --features "${{ inputs.features }}"
+          else
+            cargo check --target wasm32-unknown-unknown
+          fi
