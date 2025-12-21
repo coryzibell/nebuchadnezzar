@@ -20,6 +20,11 @@ on:
         required: false
         type: string
         default: ''
+      no-default-features:
+        description: 'Disable default features (important for avoiding native deps!)'
+        required: false
+        type: boolean
+        default: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -53,11 +58,14 @@ jobs:
       - name: Build with wasm-pack
         working-directory: ${{ inputs.working-directory }}
         run: |
-          if [ -n "${{ inputs.features }}" ]; then
-            wasm-pack build --target web --features "${{ inputs.features }}"
-          else
-            wasm-pack build --target web
+          FLAGS=""
+          if [ "${{ inputs.no-default-features }}" = "true" ]; then
+            FLAGS="$FLAGS --no-default-features"
           fi
+          if [ -n "${{ inputs.features }}" ]; then
+            FLAGS="$FLAGS --features ${{ inputs.features }}"
+          fi
+          wasm-pack build --target web $FLAGS
 
       - name: Test (if wasm-pack test supported)
         working-directory: ${{ inputs.working-directory }}
@@ -88,8 +96,11 @@ jobs:
       - name: Check WASM target
         working-directory: ${{ inputs.working-directory }}
         run: |
-          if [ -n "${{ inputs.features }}" ]; then
-            cargo check --target wasm32-unknown-unknown --features "${{ inputs.features }}"
-          else
-            cargo check --target wasm32-unknown-unknown
+          FLAGS=""
+          if [ "${{ inputs.no-default-features }}" = "true" ]; then
+            FLAGS="$FLAGS --no-default-features"
           fi
+          if [ -n "${{ inputs.features }}" ]; then
+            FLAGS="$FLAGS --features ${{ inputs.features }}"
+          fi
+          cargo check --target wasm32-unknown-unknown $FLAGS
