@@ -103,4 +103,4 @@ jobs:
           if [ -n "${{ inputs.features }}" ]; then
             FLAGS="$FLAGS --features ${{ inputs.features }}"
           fi
-          cargo check --target wasm32-unknown-unknown $FLAGS
+          cargo check --lib --target wasm32-unknown-unknown $FLAGS
