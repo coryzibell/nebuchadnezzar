@@ -86,4 +86,3 @@ jobs:
           restore-keys: ${{ runner.os }}-test-
 
       - run: cargo test --verbose
-      - run: cargo build --release --verbose
