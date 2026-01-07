@@ -10,6 +10,26 @@ on:
         required: false
         type: string
         default: ''
+      needs-openssl:
+        description: 'Require OpenSSL for building'
+        required: false
+        type: boolean
+        default: false
+      extra-apt-packages:
+        description: 'Additional apt packages (space-separated)'
+        required: false
+        type: string
+        default: ''
+      extra-brew-packages:
+        description: 'Additional brew packages (space-separated)'
+        required: false
+        type: string
+        default: ''
+      extra-choco-packages:
+        description: 'Additional chocolatey packages (space-separated)'
+        required: false
+        type: string
+        default: ''
 
 env:
   CARGO_TERM_COLOR: always
@@ -71,6 +91,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.ref }}
+
+      - name: Install system dependencies
+        uses: ./.github/actions/install-deps
+        with:
+          needs-openssl: ${{ inputs.needs-openssl }}
+          extra-apt-packages: ${{ inputs.extra-apt-packages }}
+          extra-brew-packages: ${{ inputs.extra-brew-packages }}
+          extra-choco-packages: ${{ inputs.extra-choco-packages }}
 
       - uses: dtolnay/rust-toolchain@stable
         with:

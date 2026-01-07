@@ -1,0 +1,80 @@
+name: 'Install System Dependencies'
+description: 'Cross-platform system dependency installation'
+
+inputs:
+  needs-openssl:
+    description: 'Require OpenSSL'
+    required: false
+    default: 'false'
+  extra-apt-packages:
+    description: 'Additional apt packages (space-separated)'
+    required: false
+    default: ''
+  extra-brew-packages:
+    description: 'Additional brew packages (space-separated)'
+    required: false
+    default: ''
+  extra-choco-packages:
+    description: 'Additional chocolatey packages (space-separated)'
+    required: false
+    default: ''
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install dependencies (Linux)
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        PACKAGES=""
+        if [ "${{ inputs.needs-openssl }}" == "true" ]; then
+          PACKAGES="$PACKAGES libssl-dev pkg-config"
+        fi
+        if [ -n "${{ inputs.extra-apt-packages }}" ]; then
+          PACKAGES="$PACKAGES ${{ inputs.extra-apt-packages }}"
+        fi
+        if [ -n "$PACKAGES" ]; then
+          echo "Installing: $PACKAGES"
+          sudo apt-get update
+          sudo apt-get install -y $PACKAGES
+        fi
+
+    - name: Install dependencies (macOS)
+      if: runner.os == 'macOS'
+      shell: bash
+      run: |
+        PACKAGES=""
+        if [ "${{ inputs.needs-openssl }}" == "true" ]; then
+          PACKAGES="$PACKAGES openssl@3"
+        fi
+        if [ -n "${{ inputs.extra-brew-packages }}" ]; then
+          PACKAGES="$PACKAGES ${{ inputs.extra-brew-packages }}"
+        fi
+        if [ -n "$PACKAGES" ]; then
+          echo "Installing: $PACKAGES"
+          brew install $PACKAGES
+        fi
+
+    - name: Set OpenSSL environment (macOS)
+      if: runner.os == 'macOS' && inputs.needs-openssl == 'true'
+      shell: bash
+      run: |
+        echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> $GITHUB_ENV
+        echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> $GITHUB_ENV
+
+    - name: Install dependencies (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $packages = @()
+        if ("${{ inputs.needs-openssl }}" -eq "true") {
+          $packages += "openssl"
+        }
+        $extra = "${{ inputs.extra-choco-packages }}"
+        if ($extra) {
+          $packages += $extra -split ' '
+        }
+        if ($packages.Count -gt 0) {
+          Write-Host "Installing: $($packages -join ', ')"
+          choco install $packages -y
+        }

@@ -4,6 +4,27 @@ name: wake up.
 
 on:
   workflow_call:
+    inputs:
+      needs-openssl:
+        description: 'Require OpenSSL for building'
+        required: false
+        type: boolean
+        default: false
+      extra-apt-packages:
+        description: 'Additional apt packages (space-separated)'
+        required: false
+        type: string
+        default: ''
+      extra-brew-packages:
+        description: 'Additional brew packages (space-separated)'
+        required: false
+        type: string
+        default: ''
+      extra-choco-packages:
+        description: 'Additional chocolatey packages (space-separated)'
+        required: false
+        type: string
+        default: ''
     secrets:
       GH_PAT:
         description: 'GitHub PAT for tagging'
@@ -53,6 +74,11 @@ jobs:
     needs: gate
     if: needs.gate.outputs.proceed == 'true'
     uses: coryzibell/nebuchadnezzar/.github/workflows/the-matrix-has-you.yml@main
+    with:
+      needs-openssl: ${{ inputs.needs-openssl }}
+      extra-apt-packages: ${{ inputs.extra-apt-packages }}
+      extra-brew-packages: ${{ inputs.extra-brew-packages }}
+      extra-choco-packages: ${{ inputs.extra-choco-packages }}
 
   # Sync canonical configs from nebuchadnezzar
   sync:
