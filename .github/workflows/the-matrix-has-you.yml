@@ -93,7 +93,7 @@ jobs:
           ref: ${{ inputs.ref || github.ref }}
 
       - name: Install system dependencies
-        uses: ./.github/actions/install-deps
+        uses: coryzibell/nebuchadnezzar/.github/actions/install-deps@main
         with:
           needs-openssl: ${{ inputs.needs-openssl }}
           extra-apt-packages: ${{ inputs.extra-apt-packages }}
