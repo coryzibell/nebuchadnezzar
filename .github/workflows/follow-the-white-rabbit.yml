@@ -25,6 +25,11 @@ on:
         required: false
         type: string
         default: ''
+      exclude-targets:
+        description: 'Targets to exclude (comma-separated, e.g., x86_64-unknown-linux-musl,aarch64-unknown-linux-musl)'
+        required: false
+        type: string
+        default: ''
     secrets:
       GH_PAT:
         description: 'GitHub PAT for release creation'
@@ -90,9 +95,24 @@ jobs:
       BINARY_NAME: ${{ needs.get-name.outputs.name }}
 
     steps:
+      - name: Check if target is excluded
+        id: check
+        shell: bash
+        run: |
+          EXCLUDED="${{ inputs.exclude-targets }}"
+          TARGET="${{ matrix.target }}"
+          if [[ ",$EXCLUDED," == *",$TARGET,"* ]]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "Target $TARGET is excluded, skipping build"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
       - uses: actions/checkout@v4
+        if: steps.check.outputs.skip != 'true'
 
       - name: Install system dependencies
+        if: steps.check.outputs.skip != 'true'
         uses: coryzibell/nebuchadnezzar/.github/actions/install-deps@main
         with:
           needs-openssl: ${{ inputs.needs-openssl }}
@@ -101,22 +121,24 @@ jobs:
           extra-choco-packages: ${{ inputs.extra-choco-packages }}
 
       - uses: dtolnay/rust-toolchain@stable
+        if: steps.check.outputs.skip != 'true'
         with:
           targets: ${{ matrix.target }}
 
       - name: Install cross
-        if: matrix.cross
+        if: steps.check.outputs.skip != 'true' && matrix.cross
         run: cargo install cross --git https://github.com/cross-rs/cross
 
       - name: Build with cargo
-        if: ${{ !matrix.cross }}
+        if: steps.check.outputs.skip != 'true' && !matrix.cross
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Build with cross
-        if: matrix.cross
+        if: steps.check.outputs.skip != 'true' && matrix.cross
         run: cross build --release --target ${{ matrix.target }}
 
       - name: Determine asset name
+        if: steps.check.outputs.skip != 'true'
         id: asset
         shell: bash
         run: |
@@ -124,27 +146,27 @@ jobs:
           echo "asset_name=${BINARY_NAME}-${{ matrix.target }}" >> $GITHUB_OUTPUT
 
       - name: Package (Unix)
-        if: runner.os != 'Windows'
+        if: steps.check.outputs.skip != 'true' && runner.os != 'Windows'
         run: |
           cd target/${{ matrix.target }}/release
           tar -czf ${{ steps.asset.outputs.asset_name }}.tar.gz ${{ env.BINARY_NAME }}${{ matrix.suffix }}
           mv ${{ steps.asset.outputs.asset_name }}.tar.gz ../../..
 
       - name: Package (Windows)
-        if: runner.os == 'Windows'
+        if: steps.check.outputs.skip != 'true' && runner.os == 'Windows'
         shell: pwsh
         run: |
           Compress-Archive -Path target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}${{ matrix.suffix }} -DestinationPath ${{ steps.asset.outputs.asset_name }}.zip
 
       - name: Upload artifact (Unix)
-        if: runner.os != 'Windows'
+        if: steps.check.outputs.skip != 'true' && runner.os != 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.asset.outputs.asset_name }}
           path: ${{ steps.asset.outputs.asset_name }}.tar.gz
 
       - name: Upload artifact (Windows)
-        if: runner.os == 'Windows'
+        if: steps.check.outputs.skip != 'true' && runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.asset.outputs.asset_name }}
