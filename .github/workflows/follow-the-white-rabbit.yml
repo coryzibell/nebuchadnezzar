@@ -45,7 +45,7 @@ jobs:
     outputs:
       name: ${{ steps.get.outputs.name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Extract from Cargo.toml
         id: get
         run: |
@@ -108,7 +108,7 @@ jobs:
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         if: steps.check.outputs.skip != 'true'
 
       - name: Install system dependencies
@@ -160,14 +160,14 @@ jobs:
 
       - name: Upload artifact (Unix)
         if: steps.check.outputs.skip != 'true' && runner.os != 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.asset.outputs.asset_name }}
           path: ${{ steps.asset.outputs.asset_name }}.tar.gz
 
       - name: Upload artifact (Windows)
         if: steps.check.outputs.skip != 'true' && runner.os == 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.asset.outputs.asset_name }}
           path: ${{ steps.asset.outputs.asset_name }}.zip
@@ -177,10 +177,10 @@ jobs:
     needs: [get-name, build]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
