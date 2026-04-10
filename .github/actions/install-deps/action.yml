@@ -3,7 +3,10 @@ description: 'Cross-platform system dependency installation'
 
 inputs:
   needs-openssl:
-    description: 'Require OpenSSL'
+    description: >-
+      Require OpenSSL system libraries. For Rust consumers, prefer rustls over
+      native-tls/openssl-sys to avoid C binding dependencies entirely — set this
+      to false and configure your crate features accordingly.
     required: false
     default: 'false'
   extra-apt-packages:
@@ -63,18 +66,25 @@ runs:
         echo "PKG_CONFIG_PATH=$(brew --prefix openssl@3)/lib/pkgconfig" >> $GITHUB_ENV
 
     - name: Install dependencies (Windows)
-      if: runner.os == 'Windows'
+      if: runner.os == 'Windows' && inputs.extra-choco-packages != ''
       shell: pwsh
       run: |
-        $packages = @()
-        if ("${{ inputs.needs-openssl }}" -eq "true") {
-          $packages += "openssl"
-        }
-        $extra = "${{ inputs.extra-choco-packages }}"
-        if ($extra) {
-          $packages += $extra -split ' '
-        }
-        if ($packages.Count -gt 0) {
-          Write-Host "Installing: $($packages -join ', ')"
-          choco install $packages -y
+        $packages = "${{ inputs.extra-choco-packages }}" -split ' '
+        Write-Host "Installing: $($packages -join ', ')"
+        choco install $packages -y
+
+    - name: Set OpenSSL environment (Windows)
+      if: runner.os == 'Windows' && inputs.needs-openssl == 'true'
+      shell: pwsh
+      run: |
+        # The runner image (windows-2025) bundles OpenSSL at this path.
+        # We set OPENSSL_DIR so openssl-sys can find headers and libraries.
+        # No choco/slproweb download needed.
+        $opensslDir = "C:\Program Files\OpenSSL"
+        if (Test-Path $opensslDir) {
+          Write-Host "Using runner-bundled OpenSSL at $opensslDir"
+          echo "OPENSSL_DIR=$opensslDir" >> $env:GITHUB_ENV
+        } else {
+          Write-Error "OpenSSL not found at $opensslDir — runner image may have changed. Consider switching to rustls."
+          exit 1
         }
