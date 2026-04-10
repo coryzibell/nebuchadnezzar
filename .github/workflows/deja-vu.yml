@@ -1,0 +1,71 @@
+# deja vu.
+# self-test for composite actions - a glitch in the matrix means something changed.
+name: deja vu.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test-install-deps:
+    name: install-deps (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Default path (needs-openssl: false) ---
+
+      - name: Run install-deps (default)
+        uses: ./.github/actions/install-deps
+
+      # --- OpenSSL path (needs-openssl: true) ---
+
+      - name: Run install-deps (needs-openssl)
+        uses: ./.github/actions/install-deps
+        with:
+          needs-openssl: 'true'
+
+      - name: Verify OpenSSL (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          VERSION=$(pkg-config --modversion openssl)
+          echo "pkg-config openssl version: $VERSION"
+          if [ -z "$VERSION" ]; then
+            echo "::error::pkg-config could not resolve openssl"
+            exit 1
+          fi
+
+      - name: Verify OpenSSL (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          echo "OPENSSL_DIR=$OPENSSL_DIR"
+          if [ -z "$OPENSSL_DIR" ]; then
+            echo "::error::OPENSSL_DIR is not set"
+            exit 1
+          fi
+          if [ ! -d "$OPENSSL_DIR" ]; then
+            echo "::error::OPENSSL_DIR does not exist: $OPENSSL_DIR"
+            exit 1
+          fi
+
+      - name: Verify OpenSSL (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          echo "OPENSSL_DIR=$OPENSSL_DIR"
+          if [ -z "$OPENSSL_DIR" ]; then
+            echo "::error::OPENSSL_DIR is not set"
+            exit 1
+          fi
+          if [ ! -d "$OPENSSL_DIR" ]; then
+            echo "::error::OPENSSL_DIR does not exist: $OPENSSL_DIR"
+            exit 1
+          fi
