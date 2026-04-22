@@ -1,0 +1,59 @@
+# free your mind.
+# tag a release and float the major version - letting go of @main.
+name: free your mind.
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Parse version from tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF_NAME}"       # e.g. v1.2.3
+          MAJOR="${TAG%%.*}"             # e.g. v1
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "major=$MAJOR" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, skipping"
+            exit 0
+          fi
+
+          gh release create "$TAG" \
+            --title "Release $TAG" \
+            --generate-notes
+
+      - name: Update floating major tag
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          MAJOR="${{ steps.version.outputs.major }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Delete the old major tag (locally and remote) if it exists
+          git tag -d "$MAJOR" 2>/dev/null || true
+          git push origin ":refs/tags/$MAJOR" 2>/dev/null || true
+
+          # Create the new major tag pointing at this commit
+          git tag "$MAJOR"
+          git push origin "$MAJOR"
+
+          echo "Updated $MAJOR -> $TAG"
