@@ -1,0 +1,92 @@
+# morpheus.
+# smoke-test mx CLI invocations - making sure the phone line works before the call.
+name: morpheus.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+jobs:
+  smoke-test:
+    name: mx CLI Smoke Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install cargo-binstall
+        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+
+      - name: Install mx
+        run: cargo binstall mx --no-confirm
+
+      - name: Verify mx is available
+        run: mx --version
+
+      - name: Extract and validate mx subcommands
+        run: |
+          set -euo pipefail
+
+          GITHUB_DIR=".github"
+          FAILED=0
+          TESTED=0
+          SEEN=""
+
+          echo "=== Scanning .github/ for mx CLI invocations ==="
+          echo ""
+
+          # Extract mx subcommand invocations from all YAML files under .github/.
+          # Matches patterns like: mx <subcommand>, $(mx <subcommand>), pipes into mx.
+          # Excludes: this workflow (morpheus.yml), comments, --version, binstall.
+          while IFS= read -r match; do
+            # Skip cargo-binstall lines (e.g., "cargo binstall mx")
+            if echo "$match" | grep -q 'binstall'; then
+              continue
+            fi
+
+            # Extract the subcommand (first arg after 'mx' that doesn't start with -)
+            SUBCMD=$(echo "$match" | grep -oP '(?<=\bmx\s)\s*[a-z][a-z0-9-]*' | head -1 | xargs)
+
+            if [ -z "$SUBCMD" ]; then
+              continue
+            fi
+
+            # Deduplicate
+            if echo "$SEEN" | grep -qw "$SUBCMD"; then
+              continue
+            fi
+            SEEN="$SEEN $SUBCMD"
+
+            echo "--- Testing: mx $SUBCMD --help ---"
+            TESTED=$((TESTED + 1))
+
+            if mx "$SUBCMD" --help > /dev/null 2>&1; then
+              echo "  PASS"
+            else
+              echo "  FAIL: 'mx $SUBCMD --help' exited with non-zero status"
+              FAILED=$((FAILED + 1))
+            fi
+            echo ""
+          done < <(grep -rhP '\bmx\s+[a-z]' "$GITHUB_DIR" --include='*.yml' --include='*.yaml' --exclude='morpheus.yml' | grep -v '^\s*#' | grep -v '\-\-version')
+
+          echo "=== Results ==="
+          echo "Subcommands tested: $TESTED"
+          echo "Failures: $FAILED"
+
+          if [ "$TESTED" -eq 0 ]; then
+            echo ""
+            echo "WARNING: No mx subcommand invocations found in workflow files."
+            echo "This is unexpected -- verify the extraction logic."
+            exit 1
+          fi
+
+          if [ "$FAILED" -gt 0 ]; then
+            echo ""
+            echo "FAILURE: $FAILED mx subcommand(s) not recognized by the installed mx version."
+            echo "This likely means mx has renamed or removed a subcommand that our workflows depend on."
+            exit 1
+          fi
+
+          echo ""
+          echo "All mx subcommands validated successfully."
