@@ -38,13 +38,11 @@ jobs:
 
           # Extract mx subcommand invocations from all YAML files under .github/.
           # Matches patterns like: mx <subcommand>, $(mx <subcommand>), pipes into mx.
-          # Excludes: this workflow (morpheus.yml), comments, --version, binstall.
+          # The \bmx\s+[a-z] regex already excludes flags (--version) and bare "mx".
+          # Excludes: this workflow (morpheus.yml — update if renamed), comments.
+          # TODO: Only validates the first subcommand word — e.g., `mx pr merge`
+          # would test `mx pr --help` but not validate `merge` as a pr subcommand.
           while IFS= read -r match; do
-            # Skip cargo-binstall lines (e.g., "cargo binstall mx")
-            if echo "$match" | grep -q 'binstall'; then
-              continue
-            fi
-
             # Extract the subcommand (first arg after 'mx' that doesn't start with -)
             SUBCMD=$(echo "$match" | grep -oP '(?<=\bmx\s)\s*[a-z][a-z0-9-]*' | head -1 | xargs)
 
@@ -68,7 +66,7 @@ jobs:
               FAILED=$((FAILED + 1))
             fi
             echo ""
-          done < <(grep -rhP '\bmx\s+[a-z]' "$GITHUB_DIR" --include='*.yml' --include='*.yaml' --exclude='morpheus.yml' | grep -v '^\s*#' | grep -v '\-\-version')
+          done < <(grep -rhP '\bmx\s+[a-z]' "$GITHUB_DIR" --include='*.yml' --include='*.yaml' --exclude='morpheus.yml' | grep -v '^\s*#')
 
           echo "=== Results ==="
           echo "Subcommands tested: $TESTED"
