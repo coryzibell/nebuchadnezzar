@@ -31,7 +31,7 @@ Nebuchadnezzar uses **semver tags** following the GitHub Actions convention:
 | `the-matrix-has-you.yml` | Called by wake-up | Format, clippy, test (Linux/Mac/Windows) |
 | `follow-the-white-rabbit.yml` | Tag push | Build binaries, create release |
 | `knock-knock.yml` | Release published | Publish to crates.io |
-| `release.yml` | Semver tag push (`v*.*.*`) | Create GitHub Release, update floating major tag |
+| `free-your-mind.yml` | Semver tag push (`v*.*.*`) | Create GitHub Release, update floating major tag |
 
 ## Usage
 
@@ -100,7 +100,7 @@ Releases include binaries for:
    git push origin v1.0.0
    ```
 
-2. The `release.yml` workflow will automatically:
+2. The `free-your-mind.yml` workflow will automatically:
    - Create a GitHub Release with auto-generated notes
    - Update the floating `v1` tag to point at the new release
 
