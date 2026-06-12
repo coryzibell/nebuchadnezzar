@@ -50,13 +50,15 @@ jobs:
         id: get
         run: |
           NAME=$(grep '^name = ' Cargo.toml | head -1 | cut -d'"' -f2)
-          echo "name=$NAME" >> $GITHUB_OUTPUT
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build ${{ matrix.target }}
     needs: get-name
     runs-on: ${{ matrix.os }}
     strategy:
+      # One broken target must not cancel the other eight.
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
@@ -100,10 +102,10 @@ jobs:
           EXCLUDED="${{ inputs.exclude-targets }}"
           TARGET="${{ matrix.target }}"
           if [[ ",$EXCLUDED," == *",$TARGET,"* ]]; then
-            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Target $TARGET is excluded, skipping build"
           else
-            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/checkout@v6
@@ -131,13 +133,30 @@ jobs:
         if: steps.check.outputs.skip != 'true' && matrix.cross
         run: cargo install cross --git https://github.com/cross-rs/cross
 
+      - name: Determine lockfile mode
+        if: steps.check.outputs.skip != 'true'
+        id: lockfile
+        shell: bash
+        run: |
+          # Build --locked when the consumer commits Cargo.lock so resolution
+          # cannot float past pins ([patch.crates-io] etc.). Plain otherwise.
+          # Deliberate v1 behavior change: lock-committing consumers now fail
+          # loudly on Cargo.toml/Cargo.lock drift instead of silently floating
+          # — that is the purpose. Release tags must carry a synced Cargo.lock.
+          if [ -f Cargo.lock ]; then
+            echo "flag=--locked" >> "$GITHUB_OUTPUT"
+          else
+            echo "flag=" >> "$GITHUB_OUTPUT"
+            echo "::warning title=No Cargo.lock committed::unlocked resolution — dependency drift possible"
+          fi
+
       - name: Build with cargo
         if: steps.check.outputs.skip != 'true' && !matrix.cross
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release ${{ steps.lockfile.outputs.flag }} --target ${{ matrix.target }}
 
       - name: Build with cross
         if: steps.check.outputs.skip != 'true' && matrix.cross
-        run: cross build --release --target ${{ matrix.target }}
+        run: cross build --release ${{ steps.lockfile.outputs.flag }} --target ${{ matrix.target }}
 
       - name: Determine asset name
         if: steps.check.outputs.skip != 'true'
@@ -145,7 +164,7 @@ jobs:
         shell: bash
         run: |
           # Use full target triple for cargo-binstall compatibility
-          echo "asset_name=${BINARY_NAME}-${{ matrix.target }}" >> $GITHUB_OUTPUT
+          echo "asset_name=${BINARY_NAME}-${{ matrix.target }}" >> "$GITHUB_OUTPUT"
 
       - name: Package (Unix)
         if: steps.check.outputs.skip != 'true' && runner.os != 'Windows'
@@ -177,12 +196,17 @@ jobs:
   release:
     name: Create Release
     needs: [get-name, build]
+    # Release whatever targets built — partial binaries beat none. Blocked
+    # only by a get-name failure (no binary name, nothing usable) or by run
+    # cancellation — a cancelled run must not publish a release.
+    if: ${{ !cancelled() && needs.get-name.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
 
       - name: Download artifacts
         uses: actions/download-artifact@v8
+        continue-on-error: true
         with:
           path: artifacts
 
@@ -237,6 +261,25 @@ jobs:
             echo "| $PLATFORM | $ARCH | [$FILENAME]($URL) |" >> RELEASE_NOTES.md
           done
 
+          # Flag matrix targets that produced no artifact (failed legs).
+          # Targets in exclude-targets are intentionally absent, not missing.
+          # Keep this list in sync with the build matrix above.
+          ALL_TARGETS="x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu x86_64-unknown-linux-musl aarch64-unknown-linux-musl x86_64-unknown-freebsd x86_64-pc-windows-msvc aarch64-pc-windows-msvc x86_64-apple-darwin aarch64-apple-darwin"
+          EXCLUDED="${{ inputs.exclude-targets }}"
+          MISSING=""
+          for TARGET in $ALL_TARGETS; do
+            if [[ ",$EXCLUDED," == *",$TARGET,"* ]]; then
+              continue
+            fi
+            if [ ! -d "artifacts/${BINARY_NAME}-${TARGET}" ]; then
+              MISSING="${MISSING:+$MISSING, }$TARGET"
+            fi
+          done
+          if [ -n "$MISSING" ]; then
+            printf '\n> [!WARNING]\n> Partial release — missing targets: %s\n' "$MISSING" >> RELEASE_NOTES.md
+            echo "::warning title=Partial release::missing targets: $MISSING"
+          fi
+
       - name: Create Release
         env:
           # Use GH_PAT so release event triggers knock-knock workflow
@@ -254,5 +297,6 @@ jobs:
             --notes-file RELEASE_NOTES.md
 
           for file in artifacts/*/*.tar.gz artifacts/*/*.zip; do
-            [ -f "$file" ] && gh release upload "$VERSION" "$file"
+            [ -f "$file" ] || continue
+            gh release upload "$VERSION" "$file"
           done
