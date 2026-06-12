@@ -71,7 +71,20 @@ jobs:
           key: ${{ runner.os }}-clippy-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-clippy-
 
-      - run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Determine lockfile mode
+        id: lockfile
+        shell: bash
+        run: |
+          # Check --locked when the consumer commits Cargo.lock so resolution
+          # cannot float past pins ([patch.crates-io] etc.). Plain otherwise.
+          if [ -f Cargo.lock ]; then
+            echo "flag=--locked" >> "$GITHUB_OUTPUT"
+          else
+            echo "flag=" >> "$GITHUB_OUTPUT"
+            echo "::warning title=No Cargo.lock committed::unlocked resolution — dependency drift possible"
+          fi
+
+      - run: cargo clippy --all-targets --all-features ${{ steps.lockfile.outputs.flag }} -- -D warnings
 
   test:
     name: Test (${{ matrix.os }})
@@ -113,4 +126,34 @@ jobs:
           key: ${{ runner.os }}-test-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-test-
 
-      - run: cargo test --verbose
+      # HF Hub model artifacts (ONNX models/tokenizers pulled by tests via
+      # hf-hub). Dedicated cache, not folded into the cargo cache: model
+      # artifacts are static and must not invalidate on Cargo.lock changes.
+      # Anonymous Hub downloads rate-limit (429); a hit avoids the network.
+      # One path per OS (dirs::cache_dir + "huggingface"); the unmatched
+      # paths are skipped. For consumers with no HF usage the save step
+      # no-ops with a warning annotation — the job stays green.
+      # Static key never refreshes on upstream revision bumps — evict the cache manually if the pinned model changes.
+      - name: Cache HF models
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cache/huggingface
+            ~/Library/Caches/huggingface
+            ~/AppData/Local/huggingface
+          key: hf-models-${{ runner.os }}
+
+      - name: Determine lockfile mode
+        id: lockfile
+        shell: bash
+        run: |
+          # Test --locked when the consumer commits Cargo.lock so resolution
+          # cannot float past pins ([patch.crates-io] etc.). Plain otherwise.
+          if [ -f Cargo.lock ]; then
+            echo "flag=--locked" >> "$GITHUB_OUTPUT"
+          else
+            echo "flag=" >> "$GITHUB_OUTPUT"
+            echo "::warning title=No Cargo.lock committed::unlocked resolution — dependency drift possible"
+          fi
+
+      - run: cargo test ${{ steps.lockfile.outputs.flag }} --verbose
